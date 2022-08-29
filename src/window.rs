@@ -14,7 +14,7 @@ impl Plugin for WindowPlugin {
             .insert_resource(WindowDescriptor {
                 width: 680.,
                 height: 680.,
-                title: "Ascii Snake".to_string(), // ToDo
+                title: "Ascii Tetris".to_string(), // ToDo
                 canvas: Some("#bevy".to_owned()),
                 fit_canvas_to_parent: true,
                 ..Default::default()
