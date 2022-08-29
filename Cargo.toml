@@ -1,0 +1,36 @@
+[package]
+name = "bevy_ascii_tetris"
+version = "0.1.0"
+publish = false
+authors = ["Sark"]
+edition = "2021"
+exclude = ["dist", "build", "assets", "credits"]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[features]
+dev = [
+    "bevy/dynamic",
+]
+
+[dependencies]
+bevy = { version = "0.8", default-features = false, features = ["bevy_asset", "bevy_winit", "render", "png", "x11"] }
+bevy_kira_audio = { version = "0.12", features = ["wav"] }
+rand = { version = "0.8.3" }
+
+# keep the following in sync with Bevy's dependencies
+winit = { version = "0.26.0", default-features = false }
+image = { version = "0.24", default-features = false }
+
+bevy_ascii_terminal = "0.11"
+
+[build-dependencies]
+embed-resource = "1.4"
