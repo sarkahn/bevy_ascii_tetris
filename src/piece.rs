@@ -1,10 +1,13 @@
-use bevy::prelude::{Component, Vec2, IVec2, Mat2};
+use bevy::prelude::{Component, Vec2, IVec2, Mat2, Color, default};
 
 const ROT_CLOCKWISE: Mat2 = Mat2::from_cols_array(&[0.,-1.,1.,0.]);
 
-#[derive(Component, Clone)]
+#[derive(Debug, Component, Clone, Default)]
 pub struct Piece {
     pub points: [Vec2;4],
+    pub color: Color,
+    pub tile_index: usize,
+    pub pos: Vec2,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -13,9 +16,19 @@ pub enum Rotation {
     Counterclockwise,
 }
 
+impl Rotation {
+    pub fn opposite(&self) -> Rotation {
+        match self {
+            Rotation::Clockwise => Rotation::Counterclockwise,
+            Rotation::Counterclockwise => Rotation::Clockwise,
+        }
+    }
+}
+
 impl Piece {
     pub fn grid_points(&self) -> impl Iterator<Item=IVec2> + '_ {
-        self.points.iter().map(move |p|p.floor().as_ivec2())
+        let pos = self.pos.floor().as_ivec2();
+        self.points.iter().map(move |p|p.floor().as_ivec2() + pos)
     }
 
     pub fn rotate(&mut self, direction: Rotation) {
@@ -36,6 +49,9 @@ pub const I: Piece = Piece {
         Vec2::from_array([0.5, 0.5]),
         Vec2::from_array([1.5, 0.5]),
     ],
+    color: Color::rgb(0.,1.,1.),
+    tile_index: 0,
+    pos: Vec2::ZERO,
 };
 
 pub const J: Piece = Piece {
@@ -45,6 +61,9 @@ pub const J: Piece = Piece {
         Vec2::from_array([0., 0.]),
         Vec2::from_array([1., 0.]),
     ],
+    color: Color::rgb(1.,0.,0.),
+    tile_index: 1,
+    pos: Vec2::ZERO,
 };
 
 pub const L: Piece = Piece {
@@ -54,6 +73,9 @@ pub const L: Piece = Piece {
         Vec2::from_array([1., 0.]),
         Vec2::from_array([1., 1.]),
     ],
+    color: Color::rgb(1., 0.66, 0.),
+    tile_index: 2,
+    pos: Vec2::ZERO,
 };
 
 pub const O: Piece = Piece {
@@ -63,6 +85,9 @@ pub const O: Piece = Piece {
         Vec2::from_array([0.5, -0.5]),
         Vec2::from_array([0.5, 0.5]),
     ],
+    color: Color::rgb(1.,1.,0.),
+    tile_index: 3,
+    pos: Vec2::ZERO,
 };
 
 pub const S: Piece = Piece {
@@ -72,6 +97,9 @@ pub const S: Piece = Piece {
         Vec2::from_array([0., 1.]),
         Vec2::from_array([1., 1.]),
     ],
+    color: Color::rgb(0.,1.,0.),
+    tile_index: 4,
+    pos: Vec2::ZERO,
 };
 
 pub const T: Piece = Piece {
@@ -81,6 +109,9 @@ pub const T: Piece = Piece {
         Vec2::from_array([0., 1.]),
         Vec2::from_array([1., 0.]),
     ],
+    color: Color::rgb(0.6,0.,1.),
+    tile_index: 5,
+    pos: Vec2::ZERO,
 };
 
 pub const Z: Piece = Piece {
@@ -90,6 +121,9 @@ pub const Z: Piece = Piece {
         Vec2::from_array([0., 0.]),
         Vec2::from_array([1., 0.]),
     ],
+    color: Color::rgb(1.,0.,0.),
+    tile_index: 6,
+    pos: Vec2::ZERO,
 };
 
 pub const PIECES: [Piece;7] = [

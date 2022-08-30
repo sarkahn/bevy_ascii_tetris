@@ -1,9 +1,10 @@
-use bevy::prelude::UVec2;
+use bevy::prelude::{UVec2, IVec2};
+use bevy_ascii_terminal::GridPoint;
 
 
 #[derive(Clone, Default)]
 pub struct Board {
-    state: Vec<i32>,
+    pub state: Vec<usize>,
     size: UVec2,
 }
 
@@ -27,5 +28,32 @@ impl Board {
         for _ in 0..w {
             self.state.push(0);
         }
+    }
+
+    pub fn to_index(&self, xy: impl GridPoint) -> usize {
+        xy.as_index(self.width())
+    }
+
+    pub fn in_bounds(&self, xy: impl GridPoint) -> bool {
+        let xy = xy.as_ivec2();
+        !(xy.cmplt(IVec2::ZERO).any() || xy.cmpge(self.size.as_ivec2()).any())
+    }
+
+    pub fn has_tile(&self, xy: impl GridPoint) -> bool {
+        if !self.in_bounds(xy) {
+            return false;
+        }
+        let i = xy.as_index(self.width());
+        self.state[i] >= 0
+    }
+
+    pub fn tile_value(&self, xy: impl GridPoint) -> usize {
+        let i = self.to_index(xy);
+        self.state[i]
+    }
+
+    pub fn set_tile(&mut self, xy: impl GridPoint, value: usize) {
+        let i = self.to_index(xy);
+        self.state[i] = value;
     }
 } 
