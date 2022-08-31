@@ -1,4 +1,5 @@
 use bevy::prelude::{Component, Vec2, IVec2, Mat2, Color, default};
+use bevy_ascii_terminal::GridPoint;
 
 const ROT_CLOCKWISE: Mat2 = Mat2::from_cols_array(&[0.,-1.,1.,0.]);
 
@@ -6,7 +7,7 @@ const ROT_CLOCKWISE: Mat2 = Mat2::from_cols_array(&[0.,-1.,1.,0.]);
 pub struct Piece {
     pub points: [Vec2;4],
     pub color: Color,
-    pub tile_index: usize,
+    pub piece_id: usize,
     pub pos: Vec2,
 }
 
@@ -28,7 +29,7 @@ impl Rotation {
 impl Piece {
     pub fn grid_points(&self) -> impl Iterator<Item=IVec2> + '_ {
         let pos = self.pos.floor().as_ivec2();
-        self.points.iter().map(move |p|p.floor().as_ivec2() + pos)
+        self.points.iter().map(move |p| pos + p.floor().as_ivec2())
     }
 
     pub fn rotate(&mut self, direction: Rotation) {
@@ -50,7 +51,7 @@ pub const I: Piece = Piece {
         Vec2::from_array([1.5, 0.5]),
     ],
     color: Color::rgb(0.,1.,1.),
-    tile_index: 0,
+    piece_id: 1,
     pos: Vec2::ZERO,
 };
 
@@ -61,8 +62,8 @@ pub const J: Piece = Piece {
         Vec2::from_array([0., 0.]),
         Vec2::from_array([1., 0.]),
     ],
-    color: Color::rgb(1.,0.,0.),
-    tile_index: 1,
+    color: Color::rgb(0.,0.,1.),
+    piece_id: 2,
     pos: Vec2::ZERO,
 };
 
@@ -74,7 +75,7 @@ pub const L: Piece = Piece {
         Vec2::from_array([1., 1.]),
     ],
     color: Color::rgb(1., 0.66, 0.),
-    tile_index: 2,
+    piece_id: 3,
     pos: Vec2::ZERO,
 };
 
@@ -86,7 +87,7 @@ pub const O: Piece = Piece {
         Vec2::from_array([0.5, 0.5]),
     ],
     color: Color::rgb(1.,1.,0.),
-    tile_index: 3,
+    piece_id: 4,
     pos: Vec2::ZERO,
 };
 
@@ -98,7 +99,7 @@ pub const S: Piece = Piece {
         Vec2::from_array([1., 1.]),
     ],
     color: Color::rgb(0.,1.,0.),
-    tile_index: 4,
+    piece_id: 5,
     pos: Vec2::ZERO,
 };
 
@@ -110,7 +111,7 @@ pub const T: Piece = Piece {
         Vec2::from_array([1., 0.]),
     ],
     color: Color::rgb(0.6,0.,1.),
-    tile_index: 5,
+    piece_id: 6,
     pos: Vec2::ZERO,
 };
 
@@ -122,7 +123,7 @@ pub const Z: Piece = Piece {
         Vec2::from_array([1., 0.]),
     ],
     color: Color::rgb(1.,0.,0.),
-    tile_index: 6,
+    piece_id: 7,
     pos: Vec2::ZERO,
 };
 
