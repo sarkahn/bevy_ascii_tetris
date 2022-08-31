@@ -9,6 +9,7 @@ mod window;
 
 use std::collections::BTreeSet;
 
+use bevy::audio::AudioSink;
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
 use bevy_ascii_terminal::prelude::*;
@@ -96,6 +97,8 @@ pub struct Sounds {
     place: Handle<AudioSource>,
     start: Handle<AudioSource>,
     tetris: Handle<AudioSource>,
+    music: Handle<AudioSource>,
+    music_sink: Handle<AudioSink>,
 }
 
 pub enum DropType {
@@ -116,6 +119,7 @@ fn startup(mut sfx: ResMut<Sounds>, server: Res<AssetServer>, mut commands: Comm
     sfx.place = server.load("place.wav");
     sfx.start = server.load("start.wav");
     sfx.tetris = server.load("tetris.wav");
+    sfx.music = server.load("theme.ogg");
 }
 
 fn begin_setup(q_term: Query<Entity, With<Terminal>>, mut commands: Commands) {
@@ -145,15 +149,19 @@ fn begin_input(
     mut state: ResMut<State<GameState>>,
     q_term: Query<Entity, With<Terminal>>,
     audio: Res<Audio>,
-    sfx: Res<Sounds>,
+    mut sfx: ResMut<Sounds>,
     mut commands: Commands,
+    sinks: Res<Assets<AudioSink>>,
 ) {
     if input.just_pressed(KeyCode::Space) {
         state.set(GameState::Playing).unwrap();
         for entity in &q_term {
             commands.entity(entity).despawn();
         }
-        audio.play(sfx.start.clone());
+
+        let sink =
+            audio.play_with_settings(sfx.music.clone(), PlaybackSettings::LOOP.with_volume(0.65));
+        sfx.music_sink = sinks.get_handle(sink);
     }
 }
 
@@ -304,7 +312,7 @@ fn place(
             let i = to_index(p);
             board.state[i] = piece.piece_id;
         }
-        audio.play(sfx.place.clone());
+        // audio.play(sfx.place.clone());
         commands.entity(entity).despawn();
     }
 
@@ -421,6 +429,8 @@ fn game_over_setup(
     q_pieces: Query<Entity, With<Piece>>,
     score: Res<Scoring>,
     mut commands: Commands,
+    sfx: Res<Sounds>,
+    sinks: Res<Assets<AudioSink>>,
 ) {
     for entity in &q_term {
         commands.entity(entity).despawn();
@@ -443,6 +453,11 @@ fn game_over_setup(
     term.put_string([-10, -2].pivot(Pivot::Center), "Press Space to restart");
 
     commands.spawn_bundle(TerminalBundle::from(term));
+
+    if let Some(music) = sinks.get(&sfx.music_sink) {
+        music.stop();
+    }
+    //audio.play_with_settings(sfx.music.clone(), PlaybackSettings::ONCE.with_volume(0.0));
 }
 
 fn game_over_input(input: Res<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
