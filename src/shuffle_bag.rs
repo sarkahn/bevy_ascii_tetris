@@ -2,7 +2,6 @@ use rand::{rngs::ThreadRng, seq::SliceRandom};
 
 use crate::piece::{Piece, PIECES};
 
-
 #[derive(Default, Clone)]
 pub struct ShuffleBag {
     pieces: Vec<Piece>,
@@ -17,7 +16,7 @@ impl ShuffleBag {
         }
 
         let piece = self.pieces.remove(self.pieces.len() - 1);
-        
+
         if self.pieces.is_empty() {
             self.pieces.extend(PIECES);
             self.pieces.shuffle(&mut rng);
