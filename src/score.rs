@@ -1,4 +1,6 @@
-#[derive(Default, Clone)]
+use bevy::ecs::system::Resource;
+
+#[derive(Default, Clone, Resource)]
 pub struct Scoring {
     score: usize,
     lines: usize,

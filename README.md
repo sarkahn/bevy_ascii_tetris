@@ -6,4 +6,4 @@ A simple ecs implementation of Tetris built in [Bevy](https://bevyengine.org/) u
 
 *Click the gif to play the wasm build*
 
-[![Foo](images/tetris.gif)](https://sarkahn.github.io/bevy_ascii_tetris/)
+[![Tetris](images/tetris.gif)](https://sarkahn.github.io/bevy_ascii_tetris/)

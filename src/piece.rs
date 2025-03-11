@@ -49,8 +49,8 @@ pub const I: Piece = Piece {
         Vec2::from_array([0.5, 0.5]),
         Vec2::from_array([1.5, 0.5]),
     ],
-    color: Color::rgb(0., 1., 1.),
-    piece_id: 1,
+    color: Color::srgb(0., 1., 1.),
+    piece_id: 0,
     pos: Vec2::ZERO,
 };
 
@@ -61,8 +61,8 @@ pub const J: Piece = Piece {
         Vec2::from_array([0., 0.]),
         Vec2::from_array([1., 0.]),
     ],
-    color: Color::rgb(0., 0., 1.),
-    piece_id: 2,
+    color: Color::srgb(0., 0., 1.),
+    piece_id: 1,
     pos: Vec2::ZERO,
 };
 
@@ -73,8 +73,8 @@ pub const L: Piece = Piece {
         Vec2::from_array([1., 0.]),
         Vec2::from_array([1., 1.]),
     ],
-    color: Color::rgb(1., 0.66, 0.),
-    piece_id: 3,
+    color: Color::srgb(1., 0.66, 0.),
+    piece_id: 2,
     pos: Vec2::ZERO,
 };
 
@@ -85,8 +85,8 @@ pub const O: Piece = Piece {
         Vec2::from_array([0.5, -0.5]),
         Vec2::from_array([0.5, 0.5]),
     ],
-    color: Color::rgb(1., 1., 0.),
-    piece_id: 4,
+    color: Color::srgb(1., 1., 0.),
+    piece_id: 3,
     pos: Vec2::ZERO,
 };
 
@@ -97,8 +97,8 @@ pub const S: Piece = Piece {
         Vec2::from_array([0., 1.]),
         Vec2::from_array([1., 1.]),
     ],
-    color: Color::rgb(0., 1., 0.),
-    piece_id: 5,
+    color: Color::srgb(0., 1., 0.),
+    piece_id: 4,
     pos: Vec2::ZERO,
 };
 
@@ -109,8 +109,8 @@ pub const T: Piece = Piece {
         Vec2::from_array([0., 1.]),
         Vec2::from_array([1., 0.]),
     ],
-    color: Color::rgb(0.6, 0., 1.),
-    piece_id: 6,
+    color: Color::srgb(0.6, 0., 1.),
+    piece_id: 5,
     pos: Vec2::ZERO,
 };
 
@@ -121,8 +121,8 @@ pub const Z: Piece = Piece {
         Vec2::from_array([0., 0.]),
         Vec2::from_array([1., 0.]),
     ],
-    color: Color::rgb(1., 0., 0.),
-    piece_id: 7,
+    color: Color::srgb(1., 0., 0.),
+    piece_id: 6,
     pos: Vec2::ZERO,
 };
 

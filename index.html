@@ -1,20 +1,101 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8"/>
-        <title>Bevy Ascii Tetris</title> <!-- ToDo -->
-        <link data-trunk rel="copy-dir" href="assets"/>
-        <link data-trunk rel="copy-dir" href="credits"/>
-        <link data-trunk rel="copy-file" href="build/windows/icon.ico"/>
-        <link rel="icon" href="icon.ico">
-        <link data-trunk rel="inline" href="build/web/styles.css"/>
-    </head>
-    <body>
-        <link data-trunk rel="inline" href="build/web/sound.js"/>
-        <div class="game-container">
-            <canvas id="bevy">
-                Javascript and support for canvas is required
-            </canvas>
-        </div>
-    </body>
+<head>
+    <title>Ascii Tetris</title>
+    <meta charset="UTF-8" />
+    <style>
+        body {
+            background-color: black;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            outline: none;
+            margin: 0;
+            padding: 0;
+            width: 100vw !important; 
+            height: 100vh !important; 
+            display: block !important;
+            
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Insert hack to make sound autoplay on Chrome as soon as the user interacts with the tab:
+        // https://developers.google.com/web/updates/2018/11/web-audio-autoplay#moving-forward
+
+        // the following function keeps track of all AudioContexts and resumes them on the first user
+        // interaction with the page. If the function is called and all contexts are already running,
+        // it will remove itself from all event listeners.
+        (function () {
+            // An array of all contexts to resume on the page
+            const audioContextList = [];
+
+            // An array of various user interaction events we should listen for
+            const userInputEventNames = [
+                "click",
+                "contextmenu",
+                "auxclick",
+                "dblclick",
+                "mousedown",
+                "mouseup",
+                "pointerup",
+                "touchend",
+                "keydown",
+                "keyup",
+            ];
+
+            // A proxy object to intercept AudioContexts and
+            // add them to the array for tracking and resuming later
+            self.AudioContext = new Proxy(self.AudioContext, {
+                construct(target, args) {
+                    const result = new target(...args);
+                    audioContextList.push(result);
+                    return result;
+                },
+            });
+
+            // To resume all AudioContexts being tracked
+            function resumeAllContexts(_event) {
+                let count = 0;
+
+                audioContextList.forEach((context) => {
+                    if (context.state !== "running") {
+                        context.resume();
+                    } else {
+                        count++;
+                    }
+                });
+
+                // If all the AudioContexts have now resumed then we unbind all
+                // the event listeners from the page to prevent unnecessary resume attempts
+                // Checking count > 0 ensures that the user interaction happens AFTER the game started up
+                if (count > 0 && count === audioContextList.length) {
+                    userInputEventNames.forEach((eventName) => {
+                        document.removeEventListener(eventName, resumeAllContexts);
+                    });
+                }
+            }
+
+            // We bind the resume function for each user interaction
+            // event on the page
+            userInputEventNames.forEach((eventName) => {
+                document.addEventListener(eventName, resumeAllContexts);
+            });
+        })()
+    </script>
+    <script type="module">
+        import init from './web/ascii_tetris.js'
+        init().catch((error) => {
+            if (!error.message.startsWith("Using exceptions for control flow, don't mind me. This isn't actually an error!")) {
+                throw error;
+            }
+        });
+    </script>
+</body>
 </html>

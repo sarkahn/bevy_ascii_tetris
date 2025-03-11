@@ -1,62 +1,19 @@
-// disable console on windows for release builds
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 mod board;
 mod piece;
 mod score;
 mod shuffle_bag;
-mod window;
-
 use std::collections::BTreeSet;
 
 use bevy::audio::AudioSink;
+use bevy::input::ButtonState;
+use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
-use bevy::DefaultPlugins;
-use bevy_ascii_terminal::prelude::*;
-use bevy_ascii_terminal::TiledCameraBundle;
-use board::Board;
+use bevy::{DefaultPlugins, audio::Volume};
+use bevy_ascii_terminal::*;
+use board::{Board, EMPTY_SQUARE};
 use piece::*;
 use score::Scoring;
 use shuffle_bag::ShuffleBag;
-use window::WindowPlugin;
-
-fn main() {
-    App::new()
-        .add_plugin(WindowPlugin)
-        .add_plugins(DefaultPlugins)
-        .add_plugin(TerminalPlugin)
-        .add_state(GameState::Begin)
-        .init_resource::<ShuffleBag>()
-        .init_resource::<Scoring>()
-        .init_resource::<Sounds>()
-        .insert_resource(FallSpeed(FALL_SPEED_START))
-        .insert_resource(Board {
-            state: vec![0; BOARD_WIDTH * BOARD_HEIGHT],
-        })
-        .add_startup_system(startup)
-        .add_system_set(SystemSet::on_enter(GameState::Begin).with_system(begin_setup))
-        .add_system_set(SystemSet::on_update(GameState::Begin).with_system(begin_input))
-        .add_system_set(SystemSet::on_enter(GameState::Playing).with_system(play_setup))
-        .add_system_set(
-            SystemSet::on_update(GameState::Playing)
-                .with_system(get_next)
-                .with_system(movement.after(get_next))
-                .with_system(place.after(movement)),
-        )
-        .add_system_to_stage(CoreStage::Last, render)
-        .add_system_to_stage(CoreStage::Last, ui_score.after(render))
-        .add_system_to_stage(CoreStage::Last, ui_next.after(render))
-        .add_system_set(SystemSet::on_enter(GameState::GameOver).with_system(game_over_setup))
-        .add_system_set(SystemSet::on_update(GameState::GameOver).with_system(game_over_input))
-        .run();
-}
-
-#[derive(Debug, StageLabel, Clone, Eq, PartialEq, Hash)]
-enum GameState {
-    Begin,
-    Playing,
-    GameOver,
-}
 
 pub const BOARD_WIDTH: usize = 10;
 pub const BOARD_HEIGHT: usize = 20;
@@ -68,8 +25,10 @@ pub const FALL_SPEED_MAX: f32 = 12.5;
 pub const SOFT_DROP_SPEED: f32 = 10.0;
 pub const PIECE_GLYPH: char = '█';
 pub const BOARD_GLYPH: char = '█';
-pub const DROP_GHOST_GLYPH: char = '■';
+pub const DROP_GHOST_GLYPH: char = '□';
 pub const DROP_GHOST_ALPHA: f32 = 0.09;
+pub const MUSIC_VOLUME: f32 = 0.2;
+pub const SOUND_VOLUME: f32 = 0.5;
 
 #[derive(Component)]
 struct Active;
@@ -86,126 +45,207 @@ struct ScoreTerminal;
 #[derive(Component)]
 struct NextPieceTerminal;
 
-#[derive(Default, Clone)]
+#[derive(Event)]
+struct NextPiece;
+
+#[derive(Default, Clone, Resource, Deref, DerefMut)]
 pub struct FallSpeed(f32);
 
-#[derive(Default, Clone)]
-pub struct Sounds {
-    line_1: Handle<AudioSource>,
-    line_2_3: Handle<AudioSource>,
-    dead: Handle<AudioSource>,
-    place: Handle<AudioSource>,
-    start: Handle<AudioSource>,
-    tetris: Handle<AudioSource>,
-    music: Handle<AudioSource>,
-    music_sink: Handle<AudioSink>,
-}
+#[derive(Resource, Deref, DerefMut)]
+pub struct RepeatTimer(Timer);
 
 pub enum DropType {
     Normal,
     Soft,
     Hard,
 }
-fn startup(mut sfx: ResMut<Sounds>, server: Res<AssetServer>, mut commands: Commands) {
-    let cam_size = [BOARD_WIDTH + 20, BOARD_HEIGHT + 2];
-    commands.spawn_bundle(
-        TiledCameraBundle::new()
-            .with_tile_count(cam_size)
-            .with_clear_color(Color::BLACK),
-    );
-    sfx.line_1 = server.load("1line.wav");
-    sfx.line_2_3 = server.load("2_3_lines.wav");
-    sfx.dead = server.load("dead.wav");
-    sfx.place = server.load("place.wav");
-    sfx.start = server.load("start.wav");
-    sfx.tetris = server.load("tetris.wav");
-    sfx.music = server.load("theme.ogg");
+
+#[derive(Debug, States, PartialEq, Eq, Hash, Clone)]
+enum GameState {
+    Setup,
+    Title,
+    Playing,
+    GameOver,
 }
 
-fn begin_setup(q_term: Query<Entity, With<Terminal>>, mut commands: Commands) {
-    q_term.for_each(|e| commands.entity(e).despawn());
+#[derive(Component)]
+struct Music;
 
-    let mut term = Terminal::with_size([30, BOARD_HEIGHT]);
-
-    term.draw_border(BorderGlyphs::double_line());
-    term.draw_box(
-        [0, 5].pivot(Pivot::Center),
-        [15, 3],
-        UiBox::double_line().color_fill(Color::GRAY, Color::BLACK),
-    );
-    term.put_string([-5, 5].pivot(Pivot::Center), "ASCII TETRIS".fg(Color::RED));
-    term.put_string([-5, 2].pivot(Pivot::Center), "Controls:");
-    term.put_string([2, 9], "Side Movement: A/D/←/→");
-    term.put_string([-8, -1].pivot(Pivot::Center), "Soft Drop: S/↓");
-    term.put_string([-8, -2].pivot(Pivot::Center), "Hard Drop: Space");
-
-    term.put_string([-9, -4].pivot(Pivot::Center), "Press Space to Begin");
-
-    commands.spawn_bundle(TerminalBundle::from(term));
+#[derive(Resource)]
+pub struct Settings {
+    music_volume: f32,
+    sound_volume: f32,
 }
 
-fn begin_input(
-    input: Res<Input<KeyCode>>,
-    mut state: ResMut<State<GameState>>,
-    q_term: Query<Entity, With<Terminal>>,
-    audio: Res<Audio>,
-    mut sfx: ResMut<Sounds>,
-    mut commands: Commands,
-    sinks: Res<Assets<AudioSink>>,
-) {
-    if input.just_pressed(KeyCode::Space) {
-        state.set(GameState::Playing).unwrap();
-        for entity in &q_term {
-            commands.entity(entity).despawn();
-        }
-
-        let sink =
-            audio.play_with_settings(sfx.music.clone(), PlaybackSettings::LOOP.with_volume(0.65));
-        sfx.music_sink = sinks.get_handle(sink);
-    }
+fn main() {
+    App::new()
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    prevent_default_event_handling: false,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            TerminalPlugins,
+        ))
+        .insert_resource(ClearColor(Color::BLACK))
+        .init_resource::<ShuffleBag>()
+        .init_resource::<Scoring>()
+        .insert_resource(FallSpeed(FALL_SPEED_START))
+        .insert_resource(Board {
+            state: vec![0; BOARD_WIDTH * BOARD_HEIGHT],
+        })
+        .insert_resource(Settings {
+            music_volume: 0.0,
+            sound_volume: 0.0,
+        })
+        .add_event::<NextPiece>()
+        .add_systems(Startup, setup)
+        .add_systems(OnEnter(GameState::Title), restart_to_title.after(setup))
+        .add_systems(Update, title_input.run_if(in_state(GameState::Title)))
+        .add_systems(OnEnter(GameState::GameOver), game_over)
+        .add_systems(OnEnter(GameState::Playing), next_piece)
+        .add_systems(
+            Update,
+            (
+                options_input,
+                game_over_input.run_if(in_state(GameState::GameOver)),
+            ),
+        )
+        .add_systems(
+            PreUpdate,
+            next_piece
+                .run_if(on_event::<NextPiece>)
+                .run_if(in_state(GameState::Playing)),
+        )
+        .add_systems(
+            Update,
+            (movement, place, draw_board, draw_score, draw_next)
+                .chain()
+                .run_if(in_state(GameState::Playing)),
+        )
+        .insert_state(GameState::Setup)
+        .run();
 }
 
-fn play_setup(
-    q_term: Query<Entity, With<Terminal>>,
+#[rustfmt::skip]
+fn setup(mut commands: Commands) {
+    commands.spawn((
+        Terminal::new(BOARD_SIZE),
+        BoardTerminal,
+        TerminalMeshPivot::BottomLeft,
+        SetTerminalLayerPosition(1),
+        TerminalBorder::single_line(),
+    ));
+
+    commands.spawn((
+        Terminal::new([7, 6]),
+        ScoreTerminal,
+        TerminalMeshPivot::BottomLeft,
+        TerminalBorder::single_line(),
+        SetTerminalGridPosition(IVec2::new(BOARD_WIDTH as i32 + 2, 0)),
+    ));
+
+    commands.spawn((
+        Terminal::new([7, 6]),
+        SetTerminalGridPosition(IVec2::new(BOARD_WIDTH as i32 + 2, BOARD_HEIGHT as i32 + 2)),
+        NextPieceTerminal,
+        TerminalMeshPivot::TopLeft,
+        TerminalBorder::single_line(),
+    ));
+
+    commands.spawn(TerminalCamera::new());
+
+    commands.set_state(GameState::Title);
+}
+
+// on event: Restart
+#[allow(clippy::too_many_arguments)]
+fn restart_to_title(
+    q_pieces: Query<Entity, With<Piece>>,
     mut board: ResMut<Board>,
     mut bag: ResMut<ShuffleBag>,
     mut score: ResMut<Scoring>,
     mut fall_speed: ResMut<FallSpeed>,
     mut commands: Commands,
+    mut q_board_term: Query<&mut Terminal, With<BoardTerminal>>,
 ) {
-    q_term.for_each(|e| commands.entity(e).despawn());
-
-    let term = Terminal::with_size(BOARD_SIZE + 2);
-
-    commands
-        .spawn_bundle(TerminalBundle::from(term))
-        .insert(BoardTerminal);
-
-    commands
-        .spawn_bundle(
-            TerminalBundle::new()
-                .with_size([10, 8])
-                .with_position([10, -7])
-                .with_depth(2),
-        )
-        .insert(ScoreTerminal);
-
-    commands
-        .spawn_bundle(
-            TerminalBundle::new()
-                .with_size([10, 8])
-                .with_position([10, 7])
-                .with_depth(1),
-        )
-        .insert(NextPieceTerminal);
+    for entity in &q_pieces {
+        commands.entity(entity).despawn();
+    }
 
     board.reset();
     *bag = ShuffleBag::default();
     *fall_speed = FallSpeed(FALL_SPEED_START);
     *score = Scoring::default();
+
+    let mut term = q_board_term.single_mut();
+    term.clear();
+    term.resize([BOARD_WIDTH + 20, BOARD_HEIGHT]);
+    term.put_string([0, 6].pivot(Pivot::Center), "ASCII TETRIS".fg(color::RED));
+    term.put_string([0, 4].pivot(Pivot::Center), "Controls:");
+    term.put_string(
+        [0, 0].pivot(Pivot::Center),
+        "Movement: A/D/←/→
+Soft Drop: S/↓
+Hard Drop: Space
+
+Toggle Music: M
+Toggle Sound: N
+
+Press Space to Begin",
+    );
 }
 
-fn get_next(
+fn title_input(
+    mut q_board_term: Query<&mut Terminal, With<BoardTerminal>>,
+    input: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    server: Res<AssetServer>,
+    settings: Res<Settings>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        commands.set_state(GameState::Playing);
+        let mut term = q_board_term.single_mut();
+        term.clear();
+        term.resize([BOARD_WIDTH, BOARD_HEIGHT]);
+        commands.spawn((
+            AudioPlayer::new(server.load("start.wav")),
+            PlaybackSettings::ONCE.with_volume(Volume::new(settings.sound_volume)),
+        ));
+        commands.spawn((
+            AudioPlayer::new(server.load("theme.ogg")),
+            PlaybackSettings::LOOP.with_volume(Volume::new(settings.music_volume)),
+            Music,
+        ));
+    }
+}
+
+fn options_input(
+    input: Res<ButtonInput<KeyCode>>,
+    mut settings: ResMut<Settings>,
+    q_music: Query<&AudioSink, With<Music>>,
+) {
+    if input.pressed(KeyCode::ControlLeft) && input.just_pressed(KeyCode::KeyM) {
+        settings.music_volume = MUSIC_VOLUME - settings.music_volume;
+        q_music.iter().for_each(|player| {
+            player.set_volume(settings.music_volume);
+        });
+    }
+
+    if input.pressed(KeyCode::ControlLeft) && input.just_pressed(KeyCode::KeyS) {
+        settings.sound_volume = SOUND_VOLUME - settings.sound_volume;
+    }
+}
+
+fn game_over_input(input: Res<ButtonInput<KeyCode>>, mut commands: Commands) {
+    if input.just_pressed(KeyCode::Space) {
+        commands.set_state(GameState::Title);
+    }
+}
+
+fn next_piece(
     q_piece: Query<&Piece, With<Active>>,
     mut bag: ResMut<ShuffleBag>,
     mut commands: Commands,
@@ -217,37 +257,46 @@ fn get_next(
     piece.pos.x = BOARD_WIDTH as f32 / 2.0;
     piece.pos.y = BOARD_HEIGHT as f32 + 2.0;
 
-    commands.spawn().insert(piece).insert(Active);
+    commands.spawn((piece, Active));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn movement(
     mut commands: Commands,
-    time: Res<Time>,
-    input: Res<Input<KeyCode>>,
+    input: Res<ButtonInput<KeyCode>>,
     fall_speed: Res<FallSpeed>,
     board: ResMut<Board>,
     mut q_piece: Query<(Entity, &mut Piece), With<Active>>,
     mut score: ResMut<Scoring>,
+    time: Res<Time>,
+    mut key_events: EventReader<KeyboardInput>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_secs();
     for (entity, mut piece) in &mut q_piece {
-        let hor = input.just_pressed(KeyCode::D) as i32 - input.just_pressed(KeyCode::A) as i32
-            + input.just_pressed(KeyCode::Right) as i32
-            - input.just_pressed(KeyCode::Left) as i32;
-        if hor != 0
-            && can_move(
-                &board,
-                piece.pos,
-                grid_points(&piece.points),
-                IVec2::new(hor, 0),
-            )
-        {
-            piece.pos.x += hor as f32;
+        // Manual input polling handles key repeat automatically, feels much more
+        // responsive for movement
+        for evt in key_events.read() {
+            if evt.state == ButtonState::Pressed {
+                let right =
+                    (evt.key_code == KeyCode::KeyD || evt.key_code == KeyCode::ArrowRight) as i32;
+                let left =
+                    (evt.key_code == KeyCode::KeyA || evt.key_code == KeyCode::ArrowLeft) as i32;
+                let hor = right - left;
+                if hor != 0
+                    && can_move(
+                        &board,
+                        piece.pos,
+                        grid_points(&piece.points),
+                        IVec2::new(hor, 0),
+                    )
+                {
+                    piece.pos.x += hor as f32;
+                }
+            }
         }
 
-        let rot = input.just_pressed(KeyCode::E) as i32 - input.just_pressed(KeyCode::Q) as i32
-            + input.just_pressed(KeyCode::X) as i32
-            - input.just_pressed(KeyCode::Z) as i32;
+        let rot = input.any_just_pressed([KeyCode::KeyE, KeyCode::KeyX]) as i32
+            - input.any_just_pressed([KeyCode::KeyQ, KeyCode::KeyZ]) as i32;
         let rot = match rot {
             1 => Some(Rotation::Clockwise),
             -1 => Some(Rotation::Counterclockwise),
@@ -261,16 +310,17 @@ fn movement(
         }
 
         let mut fall = fall_speed.0 + FALL_SPEED_ACCEL * score.level() as f32;
-        let drop_type = if input.pressed(KeyCode::S) || input.pressed(KeyCode::Down) {
-            fall = (fall + SOFT_DROP_SPEED) * dt;
-            DropType::Soft
-        } else if input.just_pressed(KeyCode::Space) {
-            fall = 30.0;
-            DropType::Hard
-        } else {
-            fall *= dt;
-            DropType::Normal
-        };
+        let drop_type =
+            if input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]) && piece_is_visible(&piece) {
+                fall = (fall + SOFT_DROP_SPEED) * dt;
+                DropType::Soft
+            } else if input.just_pressed(KeyCode::Space) {
+                fall = 30.0;
+                DropType::Hard
+            } else {
+                fall *= dt;
+                DropType::Normal
+            };
 
         let (pos, hit, lines_moved) = try_drop(piece.pos, &piece.points, &board, fall);
 
@@ -296,53 +346,59 @@ fn place(
     q_piece: Query<(Entity, &Piece), With<PlacePiece>>,
     mut commands: Commands,
     mut score: ResMut<Scoring>,
-    mut lines: Local<BTreeSet<usize>>,
-    mut state: ResMut<State<GameState>>,
-    audio: Res<Audio>,
-    sfx: Res<Sounds>,
+    mut lines_to_clear: Local<BTreeSet<usize>>,
+    server: Res<AssetServer>,
+    settings: Res<Settings>,
 ) {
     for (entity, piece) in &q_piece {
         for p in piece.grid_points() {
             if p.y >= BOARD_HEIGHT as i32 {
-                state.set(GameState::GameOver).unwrap();
-                audio.play(sfx.dead.clone());
+                commands.set_state(GameState::GameOver);
                 return;
             }
-            lines.insert(p.y as usize);
-            let i = to_index(p);
+            lines_to_clear.insert(p.y as usize);
+            let i = p.as_index(BOARD_SIZE);
             board.state[i] = piece.piece_id;
         }
         // audio.play(sfx.place.clone());
         commands.entity(entity).despawn();
+        commands.send_event(NextPiece);
+        commands.spawn((
+            AudioPlayer::new(server.load("place.wav")),
+            PlaybackSettings::ONCE.with_volume(Volume::new(settings.sound_volume)),
+        ));
     }
 
     let mut count = 0;
     // Lines must be cleared in reverse order
-    for line in lines.iter().rev() {
+    for line in lines_to_clear.iter().rev() {
         if board.is_line_filled(*line) {
             board.clear_line(*line);
             count += 1;
         }
     }
-    lines.clear();
+    lines_to_clear.clear();
 
     if count != 0 {
         score.line_clears(count);
-        let sound = match count {
-            1 => &sfx.line_1,
-            4 => &sfx.tetris,
-            _ => &sfx.line_2_3,
+        let sound: Handle<AudioSource> = match count {
+            1 => server.load("1line.wav"),
+            4 => server.load("tetris.wav"),
+            _ => server.load("2_3_lines.wav"),
         };
-        audio.play(sound.clone());
+        commands.spawn((
+            AudioPlayer::new(sound),
+            PlaybackSettings::ONCE.with_volume(Volume::new(settings.sound_volume)),
+        ));
     }
 }
 
-fn render(
+fn draw_board(
     mut q_term: Query<&mut Terminal, With<BoardTerminal>>,
     q_pieces: Query<&Piece, With<Active>>,
     board: Res<Board>,
 ) {
-    if q_term.is_empty() {
+    if q_term.is_empty() || q_pieces.is_empty() {
         return;
     }
 
@@ -353,32 +409,35 @@ fn render(
         // Draw drop ghost
         let (drop_point, _, _) = try_drop(piece.pos, &piece.points, &board, 30.);
         for pos in grid_points(&piece.points) {
-            // Add one to all positions to account for terminal border
-            let pos = drop_point.floor().as_ivec2() + pos + 1;
-            if term.is_in_bounds(pos) {
+            let pos = drop_point.floor().as_ivec2() + pos;
+            if term.bounds().contains_point(pos) {
                 let mut col = piece.color;
-                col.set_a(DROP_GHOST_ALPHA);
-                term.put_char(pos, DROP_GHOST_GLYPH.fg(col));
+                col.set_alpha(DROP_GHOST_ALPHA);
+                term.put_char(pos, DROP_GHOST_GLYPH).fg(col);
             }
         }
 
+        // Draw actual piece
         for pos in piece.grid_points() {
-            let pos = pos + 1;
-            if term.is_in_bounds(pos) {
-                term.put_char(pos, PIECE_GLYPH.fg(piece.color));
+            if term.bounds().contains_point(pos) {
+                term.put_char(pos, PIECE_GLYPH).fg(piece.color);
             }
         }
     }
 
-    for (i, tile) in board.state.iter().enumerate().filter(|(_, p)| **p != 0) {
-        let color = PIECES[*tile - 1].color;
-        let xy = to_xy(i) + 1;
-        term.put_char(xy, BOARD_GLYPH.fg(color));
+    for (i, tile_index) in board
+        .state
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| **p < EMPTY_SQUARE)
+    {
+        let color = PIECES[*tile_index].color;
+        let xy = term.index_to_tile(i);
+        term.put_char(xy, BOARD_GLYPH).fg(color);
     }
-    term.draw_border(BorderGlyphs::double_line().fg(Color::WHITE));
 }
 
-fn ui_score(mut q_term: Query<&mut Terminal, With<ScoreTerminal>>, score: Res<Scoring>) {
+fn draw_score(mut q_term: Query<&mut Terminal, With<ScoreTerminal>>, score: Res<Scoring>) {
     if q_term.is_empty() {
         return;
     }
@@ -387,22 +446,16 @@ fn ui_score(mut q_term: Query<&mut Terminal, With<ScoreTerminal>>, score: Res<Sc
         let mut term = q_term.single_mut();
 
         term.clear();
-        let glyphs = BorderGlyphs::from_string(
-            "╠═╗
-          ║ ║
-          ╩═╝",
-        );
-        term.draw_border(glyphs);
-        term.put_string([1, 6], "Score:");
-        term.put_string([2, 5], score.score().to_string());
-        term.put_string([1, 4], "Level:");
+        term.put_string([1, 0], "Score:");
+        term.put_string([2, 1], score.score().to_string());
+        term.put_string([1, 2], "Level:");
         term.put_string([2, 3], score.level().to_string());
-        term.put_string([1, 2], "Lines:");
-        term.put_string([2, 1], score.lines().to_string());
+        term.put_string([1, 4], "Lines:");
+        term.put_string([2, 5], score.lines().to_string());
     }
 }
 
-fn ui_next(bag: Res<ShuffleBag>, mut q_term: Query<&mut Terminal, With<NextPieceTerminal>>) {
+fn draw_next(bag: Res<ShuffleBag>, mut q_term: Query<&mut Terminal, With<NextPieceTerminal>>) {
     if q_term.is_empty() {
         return;
     }
@@ -410,77 +463,53 @@ fn ui_next(bag: Res<ShuffleBag>, mut q_term: Query<&mut Terminal, With<NextPiece
     if bag.is_changed() {
         let mut term = q_term.single_mut();
         term.clear();
-        let glyphs = BorderGlyphs::from_string(
-            "╦═╗
-          ║ ║
-          ╠═╝",
-        );
-        term.draw_border(glyphs);
-        term.put_string([2, 1].pivot(Pivot::TopLeft), "Next:");
+
+        term.put_string([1, 0].pivot(Pivot::TopLeft), "Next:");
         let piece = bag.peek();
         for p in piece.grid_points() {
-            term.put_char(p.pivot(Pivot::Center), PIECE_GLYPH.fg(piece.color));
+            let p = IVec2::new(3, 2) + p;
+            term.put_char(p, PIECE_GLYPH).fg(piece.color);
         }
     }
 }
 
-fn game_over_setup(
-    q_term: Query<Entity, With<Terminal>>,
+fn game_over(
+    mut q_board_term: Query<&mut Terminal, With<BoardTerminal>>,
     q_pieces: Query<Entity, With<Piece>>,
     score: Res<Scoring>,
     mut commands: Commands,
-    sfx: Res<Sounds>,
-    sinks: Res<Assets<AudioSink>>,
+    server: Res<AssetServer>,
+    q_music: Query<Entity, With<Music>>,
+    settings: Res<Settings>,
 ) {
-    for entity in &q_term {
-        commands.entity(entity).despawn();
-    }
-
     for entity in &q_pieces {
         commands.entity(entity).despawn();
     }
+    let mut term = q_board_term.single_mut();
 
-    let final_score = score.score().to_string();
+    term.clear();
+    term.resize([BOARD_WIDTH + 20, BOARD_HEIGHT]);
 
-    let mut term = Terminal::with_size([30, 8]);
-    term.draw_border(BorderGlyphs::double_line());
+    term.put_string([0, 3].pivot(Pivot::Center), "Game Over!".fg(color::RED));
+    term.put_string([0, 2].pivot(Pivot::Center), "Final Score: ");
+    term.put_string(
+        [0, 0].pivot(Pivot::Center),
+        score.score().to_string().fg(color::YELLOW),
+    );
+    term.put_string([0, -2].pivot(Pivot::Center), "Press Space to restart");
 
-    term.put_string([-5, 3].pivot(Pivot::Center), "Game Over!");
-    term.put_string([-6, 1].pivot(Pivot::Center), "Final Score:");
-    let x = final_score.chars().count() as i32 / 2;
-    term.put_string([-x, 0].pivot(Pivot::Center), final_score.fg(Color::YELLOW));
-
-    term.put_string([-10, -2].pivot(Pivot::Center), "Press Space to restart");
-
-    commands.spawn_bundle(TerminalBundle::from(term));
-
-    if let Some(music) = sinks.get(&sfx.music_sink) {
-        music.stop();
+    for entity in &q_music {
+        commands.entity(entity).despawn();
     }
-    //audio.play_with_settings(sfx.music.clone(), PlaybackSettings::ONCE.with_volume(0.0));
-}
-
-fn game_over_input(input: Res<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
-    if input.just_pressed(KeyCode::Space) {
-        state.set(GameState::Begin).unwrap();
-    }
-}
-
-fn to_index(xy: impl GridPoint) -> usize {
-    xy.as_index(BOARD_WIDTH)
-}
-
-fn to_xy(i: usize) -> IVec2 {
-    let index = i as i32;
-    let w = BOARD_WIDTH as i32;
-    let x = index % w;
-    let y = index / w;
-    IVec2::new(x, y)
+    commands.spawn((
+        AudioPlayer::new(server.load("dead.wav")),
+        PlaybackSettings::ONCE.with_volume(Volume::new(settings.sound_volume)),
+    ));
 }
 
 fn get_tile(board: &Board, xy: IVec2) -> Option<usize> {
     if in_bounds(xy) {
-        Some(board.state[to_index(xy)])
+        Some(board.state[xy.as_index(BOARD_SIZE)])
     } else {
         None
     }
@@ -498,9 +527,16 @@ fn in_bounds(xy: IVec2) -> bool {
     x >= 0 && x < BOARD_WIDTH as i32 && y >= 0 && y < BOARD_HEIGHT as i32
 }
 
+fn piece_is_visible(piece: &Piece) -> bool {
+    piece
+        .points
+        .iter()
+        .any(|p| in_stage(piece.pos.as_ivec2() + p.as_ivec2()))
+}
+
 /// Try to move a block down by the given amount.
 ///
-/// Returns (position after move, hit, and number of lines moved)
+/// Returns (position after move, whether or not we hit something, and number of lines moved)
 fn try_drop(pos: Vec2, points: &[Vec2], board: &Board, dist: f32) -> (Vec2, bool, usize) {
     let curr_grid = pos.floor().as_ivec2();
     let mut next = pos - Vec2::new(0., dist);
@@ -525,12 +561,12 @@ fn can_move(
     points: impl Iterator<Item = IVec2>,
     movement: impl GridPoint,
 ) -> bool {
-    let movement = movement.as_ivec2();
+    let movement = movement.to_ivec2();
     let pos = pos.floor().as_ivec2();
 
     points
         .map(|p| pos + p + movement)
-        .all(|p| get_tile(board, p).map_or(in_stage(p), |tile| tile == 0))
+        .all(|p| get_tile(board, p).map_or(in_stage(p), |tile| tile == EMPTY_SQUARE))
 }
 
 fn grid_points(points: &[Vec2]) -> impl Iterator<Item = IVec2> + '_ {

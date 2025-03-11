@@ -1,6 +1,10 @@
+use bevy::ecs::system::Resource;
+
 use crate::BOARD_WIDTH;
 
-#[derive(Default, Clone)]
+pub const EMPTY_SQUARE: usize = crate::piece::PIECES.len();
+
+#[derive(Default, Clone, Resource)]
 pub struct Board {
     pub state: Vec<usize>,
 }
@@ -8,19 +12,19 @@ pub struct Board {
 impl Board {
     pub fn is_line_filled(&self, line: usize) -> bool {
         let i = line * BOARD_WIDTH;
-        self.state[i..i + BOARD_WIDTH].iter().all(|v| *v != 0)
+        self.state[i..i + BOARD_WIDTH]
+            .iter()
+            .all(|v| *v != EMPTY_SQUARE)
     }
 
     pub fn clear_line(&mut self, line: usize) {
-        println!("Clearing line {}", line);
         let i = line * BOARD_WIDTH;
+        // Remove our line, add an empty one to the end
         self.state.drain(i..i + BOARD_WIDTH).count();
-        self.state.extend([0; BOARD_WIDTH].iter());
+        self.state.extend([EMPTY_SQUARE; BOARD_WIDTH].iter());
     }
 
     pub fn reset(&mut self) {
-        for v in self.state.iter_mut() {
-            *v = 0;
-        }
+        self.state.fill(EMPTY_SQUARE);
     }
 }

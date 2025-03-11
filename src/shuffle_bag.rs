@@ -1,8 +1,9 @@
+use bevy::ecs::system::Resource;
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 
-use crate::piece::{Piece, PIECES};
+use crate::piece::{PIECES, Piece};
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Resource)]
 pub struct ShuffleBag {
     pieces: Vec<Piece>,
 }
