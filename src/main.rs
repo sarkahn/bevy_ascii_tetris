@@ -227,14 +227,14 @@ fn options_input(
     mut settings: ResMut<Settings>,
     q_music: Query<&AudioSink, With<Music>>,
 ) {
-    if input.pressed(KeyCode::ControlLeft) && input.just_pressed(KeyCode::KeyM) {
+    if input.just_pressed(KeyCode::KeyM) {
         settings.music_volume = MUSIC_VOLUME - settings.music_volume;
         q_music.iter().for_each(|player| {
             player.set_volume(settings.music_volume);
         });
     }
 
-    if input.pressed(KeyCode::ControlLeft) && input.just_pressed(KeyCode::KeyS) {
+    if input.just_pressed(KeyCode::KeyN) {
         settings.sound_volume = SOUND_VOLUME - settings.sound_volume;
     }
 }
