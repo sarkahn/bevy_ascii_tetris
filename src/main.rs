@@ -190,6 +190,7 @@ fn restart_to_title(
         "Movement: A/D/←/→
 Soft Drop: S/↓
 Hard Drop: Space
+Rotate: Q/E/Z/X
 
 Toggle Music: M
 Toggle Sound: N
